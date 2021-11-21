@@ -1,187 +1,57 @@
-from machine import Pin, SPI, PWM
-import framebuf
-import time
-import os
-from machine import UART
+# aclock.py Test/demo program for nanogui
+# Orinally for ssd1351-based OLED displays but runs on most displays
+# Adafruit 1.5" 128*128 OLED display: https://www.adafruit.com/product/1431
+# Adafruit 1.27" 128*96 display https://www.adafruit.com/product/1673
 
+# Released under the MIT License (MIT). See LICENSE.
+# Copyright (c) 2018-2020 Peter Hinch
 
-BL = 13
-DC = 8
-RST = 12
-MOSI = 11
-SCK = 10
-CS = 9
+# Initialise hardware and framebuf before importing modules.
+from color_setup import ssd  # Create a display instance
+from gui.core.nanogui import refresh  # Color LUT is updated now.
+from gui.widgets.label import Label
+from gui.widgets.dial import Dial, Pointer
+refresh(ssd, True)  # Initialise and clear display.
 
+# Now import other modules
+import cmath
+import utime
+from gui.core.writer import CWriter
 
-class LCD_1inch3(framebuf.FrameBuffer):
-    def __init__(self):
-        self.width = 240
-        self.height = 240
+# Font for CWriter
+import gui.fonts.arial10 as arial10
+from gui.core.colors import *
 
-        self.cs = Pin(CS, Pin.OUT)
-        self.rst = Pin(RST, Pin.OUT)
+def aclock():
+    uv = lambda phi : cmath.rect(1, phi)  # Return a unit vector of phase phi
+    pi = cmath.pi
+    days = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+            'Sunday')
+    months = ('Jan', 'Feb', 'March', 'April', 'May', 'June', 'July',
+              'Aug', 'Sept', 'Oct', 'Nov', 'Dec')
+    # Instantiate CWriter
+    CWriter.set_textpos(ssd, 0, 0)  # In case previous tests have altered it
+    wri = CWriter(ssd, arial10, GREEN, BLACK)  # Report on fast mode. Or use verbose=False
+    wri.set_clip(True, True, False)
 
-        self.cs(1)
-        self.spi = SPI(1)
-        self.spi = SPI(1, 1000_000)
-        self.spi = SPI(1, 100000_000, polarity=0, phase=0, sck=Pin(SCK), mosi=Pin(MOSI), miso=None)
-        self.dc = Pin(DC, Pin.OUT)
-        self.dc(1)
-        self.buffer = bytearray(self.height * self.width * 2)
-        super().__init__(self.buffer, self.width, self.height, framebuf.RGB565)
-        self.init_display()
+    # Instantiate displayable objects
+    dial = Dial(wri, 2, 2, height = 75, ticks = 12, bdcolor=None, label=120, pip=False)  # Border in fg color
+    lbltim = Label(wri, 5, 85, 35)
+    hrs = Pointer(dial)
+    mins = Pointer(dial)
+    secs = Pointer(dial)
 
-        self.red = 0x07E0
-        self.green = 0x001f
-        self.blue = 0xf800
-        self.white = 0xffff
-        self.black = 0x0000
-
-    def write_cmd(self, cmd):
-        self.cs(1)
-        self.dc(0)
-        self.cs(0)
-        self.spi.write(bytearray([cmd]))
-        self.cs(1)
-
-    def write_data(self, buf):
-        self.cs(1)
-        self.dc(1)
-        self.cs(0)
-        self.spi.write(bytearray([buf]))
-        self.cs(1)
-
-    def init_display(self):
-        """Initialize dispaly"""
-        self.rst(1)
-        self.rst(0)
-        self.rst(1)
-
-        self.write_cmd(0x36)
-        self.write_data(0x70)
-
-        self.write_cmd(0x3A)
-        self.write_data(0x05)
-
-        self.write_cmd(0xB2)
-        self.write_data(0x0C)
-        self.write_data(0x0C)
-        self.write_data(0x00)
-        self.write_data(0x33)
-        self.write_data(0x33)
-
-        self.write_cmd(0xB7)
-        self.write_data(0x35)
-
-        self.write_cmd(0xBB)
-        self.write_data(0x19)
-
-        self.write_cmd(0xC0)
-        self.write_data(0x2C)
-
-        self.write_cmd(0xC2)
-        self.write_data(0x01)
-
-        self.write_cmd(0xC3)
-        self.write_data(0x12)
-
-        self.write_cmd(0xC4)
-        self.write_data(0x20)
-
-        self.write_cmd(0xC6)
-        self.write_data(0x0F)
-
-        self.write_cmd(0xD0)
-        self.write_data(0xA4)
-        self.write_data(0xA1)
-
-        self.write_cmd(0xE0)
-        self.write_data(0xD0)
-        self.write_data(0x04)
-        self.write_data(0x0D)
-        self.write_data(0x11)
-        self.write_data(0x13)
-        self.write_data(0x2B)
-        self.write_data(0x3F)
-        self.write_data(0x54)
-        self.write_data(0x4C)
-        self.write_data(0x18)
-        self.write_data(0x0D)
-        self.write_data(0x0B)
-        self.write_data(0x1F)
-        self.write_data(0x23)
-
-        self.write_cmd(0xE1)
-        self.write_data(0xD0)
-        self.write_data(0x04)
-        self.write_data(0x0C)
-        self.write_data(0x11)
-        self.write_data(0x13)
-        self.write_data(0x2C)
-        self.write_data(0x3F)
-        self.write_data(0x44)
-        self.write_data(0x51)
-        self.write_data(0x2F)
-        self.write_data(0x1F)
-        self.write_data(0x1F)
-        self.write_data(0x20)
-        self.write_data(0x23)
-
-        self.write_cmd(0x21)
-
-        self.write_cmd(0x11)
-
-        self.write_cmd(0x29)
-
-    def show(self):
-        self.write_cmd(0x2A)
-        self.write_data(0x00)
-        self.write_data(0x00)
-        self.write_data(0x00)
-        self.write_data(0xef)
-
-        self.write_cmd(0x2B)
-        self.write_data(0x00)
-        self.write_data(0x00)
-        self.write_data(0x00)
-        self.write_data(0xEF)
-
-        self.write_cmd(0x2C)
-
-        self.cs(1)
-        self.dc(1)
-        self.cs(0)
-        self.spi.write(self.buffer)
-        self.cs(1)
-
-
-if __name__ == '__main__':
-    pwm = PWM(Pin(BL))
-    pwm.freq(1000)
-    pwm.duty_u16(32768)  # max 65535
-
-    LCD = LCD_1inch3()
-
-    LCD.fill(0xFFFF)
-    LCD.show()
-    
-    uart = UART(1, 9600)
-    
+    hstart =  0 + 0.7j  # Pointer lengths and position at top
+    mstart = 0 + 0.92j
+    sstart = 0 + 0.92j 
     while True:
-        LCD.fill(0xFFFF)
-        c = uart.read(2)
-        if c == b'BM':
-            buff = []
-            while len(buff) < 30:
-                b = uart.read(1)
-                if b!=None:
-                    buff.append(b[0])
-            pm1_0 = (buff[2] << 8) + buff[3]
-            pm2_5 = (buff[4] << 8) + buff[5]
-            pm10 = (buff[6]<<8) + buff[7]
-            
-            LCD.fill(0x0000)
-            LCD.text("PM1.0 " +str(pm1_0),0,0,0xFFFF)
-            LCD.text("PM2.5 " +str(pm2_5),0,8,0xFFFF)
-            LCD.text("PM10 " +str(pm10),0,16,0xFFFF)
-            LCD.show()
+        t = utime.localtime()
+        hrs.value(hstart * uv(-t[3]*pi/6 - t[4]*pi/360), YELLOW)
+        mins.value(mstart * uv(-t[4] * pi/30), YELLOW)
+        secs.value(sstart * uv(-t[5] * pi/30), RED)
+        lbltim.value('{:02d}.{:02d}.{:02d}'.format(t[3], t[4], t[5]))
+        dial.text('{} {} {} {}'.format(days[t[6]], t[2], months[t[1] - 1], t[0]))
+        refresh(ssd)
+        utime.sleep(1)
+
+aclock()
